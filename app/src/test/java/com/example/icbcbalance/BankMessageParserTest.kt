@@ -102,6 +102,17 @@ class BankMessageParserTest {
         assertEquals(BalanceConfidence.BANK_CONFIRMED, calibrated.confidence)
     }
 
+    @Test fun nestedMerchantParenthesesKeepTheCompleteDescription() {
+        val received = LocalDateTime.of(2026, 9, 21, 6, 54)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val text = "[1条]尾号7874卡9月21日06:53支出(消费美团支付-广东石磨肠粉（双阳支路店）)19.50元，余额1,087.80元。【工商银行】"
+        val parsed = BankMessageParser.parseSms(text, received)!!
+        assertEquals(Direction.EXPENSE, parsed.transaction.direction)
+        assertEquals(1950L, parsed.transaction.amountCents)
+        assertEquals(108780L, parsed.balanceCents)
+        assertEquals("消费美团支付-广东石磨肠粉(双阳支路店)", parsed.transaction.description)
+    }
+
     @Test fun commonBankMessageVariants() {
         val cases = listOf(
             "您尾号1234的储蓄卡账户9月18日23时01分消费人民币10.00元，账户余额为人民币990.00元。[中国建设银行]" to Direction.EXPENSE,

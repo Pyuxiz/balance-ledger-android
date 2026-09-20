@@ -11,7 +11,7 @@ import java.time.ZoneId
 
 object BankMessageParser {
     private val icbcTransactionPattern = Regex(
-        "尾号(\\d{4})卡(\\d{1,2})月(\\d{1,2})日(\\d{1,2}):(\\d{2})(?:网上银行)?(收入|支出)\\(([^()]{1,100})\\)([0-9][0-9,.]*)元"
+        "尾号(\\d{4})卡(\\d{1,2})月(\\d{1,2})日(\\d{1,2}):(\\d{2})(?:网上银行)?(收入|支出)\\((.{1,100})\\)([0-9][0-9,.]*)元"
     )
     private val balancePattern = Regex(
         "(?:交易后余额|可用余额|账户余额|活期余额|余额)(?:为|是|[:：])?\\s*(?:人民币|RMB|CNY|[¥￥])?\\s*([0-9][0-9,.]*)\\s*元?",
@@ -67,8 +67,8 @@ object BankMessageParser {
                 val context = normalized.substring(from, match.range.first)
                 listOf("余额", "额度", "欠款", "账单").any(context::contains)
             }
-            .minByOrNull { distance(it.range.first, directionMatch.second) }
-            ?.takeIf { distance(it.range.first, directionMatch.second) <= 60 } ?: return null
+            .minByOrNull { distance(it.range.first, directionMatch.index) }
+            ?.takeIf { distance(it.range.first, directionMatch.index) <= 60 } ?: return null
         val amountText = amountMatch.groupValues[1].ifBlank { amountMatch.groupValues[2] }
         val amount = MoneyUtils.parseMoneyToCents(amountText) ?: return null
         if (amount <= 0) return null
@@ -77,9 +77,9 @@ object BankMessageParser {
         val balance = if (delivery == Delivery.BANK_NOTIFICATION) null else
             balancePattern.find(normalized)?.groupValues?.getOrNull(1)?.let(MoneyUtils::parseMoneyToCents)
         val source = if (balance != null) Source.ICBC_SMS else Source.ICBC_NOTIFICATION
-        val description = description(normalized, directionMatch.first, amountMatch)
+        val description = description(normalized, directionMatch, amountMatch)
         return ParsedMessage(
-            BankTransaction(tail, month, day, hour, minute, directionMatch.first, amount,
+            BankTransaction(tail, month, day, hour, minute, directionMatch.direction, amount,
                 description, source, now),
             balanceCents = balance,
             delivery = delivery
@@ -108,12 +108,14 @@ object BankMessageParser {
         )
     }
 
-    private fun direction(text: String): Pair<Direction, Int>? {
+    private data class DirectionMatch(val direction: Direction, val index: Int, val word: String)
+
+    private fun direction(text: String): DirectionMatch? {
         val matches = buildList {
-            incomeWords.forEach { word -> text.indexOf(word).takeIf { it >= 0 }?.let { add(Direction.INCOME to it) } }
-            expenseWords.forEach { word -> text.indexOf(word).takeIf { it >= 0 }?.let { add(Direction.EXPENSE to it) } }
+            incomeWords.forEach { word -> text.indexOf(word).takeIf { it >= 0 }?.let { add(DirectionMatch(Direction.INCOME, it, word)) } }
+            expenseWords.forEach { word -> text.indexOf(word).takeIf { it >= 0 }?.let { add(DirectionMatch(Direction.EXPENSE, it, word)) } }
         }
-        return matches.minByOrNull { it.second }
+        return matches.minByOrNull { it.index }
     }
 
     private fun transactionTime(text: String, now: Long): List<Int>? {
@@ -131,9 +133,15 @@ object BankMessageParser {
         }
     }
 
-    private fun description(text: String, direction: Direction, amount: MatchResult): String {
-        val parenthesized = Regex("\\(([^()]{1,100})\\)").find(text)?.groupValues?.getOrNull(1)?.trim()
-        if (!parenthesized.isNullOrBlank()) return parenthesized
+    private fun description(text: String, direction: DirectionMatch, amount: MatchResult): String {
+        val between = text.substring(
+            (direction.index + direction.word.length).coerceAtMost(amount.range.first),
+            amount.range.first
+        ).trim().trim(',', '，', '。', ':', '：', ';', '；')
+        val unwrapped = unwrapOuterParentheses(between)
+            .replace(Regex("^(?:人民币|RMB|CNY|[¥￥])\\s*", RegexOption.IGNORE_CASE), "")
+            .trim()
+        if (unwrapped.isNotBlank()) return unwrapped.take(100)
         val labeled = descriptionPattern.find(text)?.groupValues?.getOrNull(1)?.trim()
         if (!labeled.isNullOrBlank()) return labeled
         val start = (amount.range.first - 18).coerceAtLeast(0)
@@ -143,7 +151,20 @@ object BankMessageParser {
             .replace(balancePattern, "")
             .replace(Regex("[\\[\\](),，。:：;；]"), " ")
             .replace(Regex("\\s+"), " ").trim()
-        return nearby.take(60).ifBlank { if (direction == Direction.INCOME) "收入" else "支出" }
+        return nearby.take(60).ifBlank { if (direction.direction == Direction.INCOME) "收入" else "支出" }
+    }
+
+    /** Removes one pair only when it encloses the complete value, preserving nested merchant details. */
+    private fun unwrapOuterParentheses(value: String): String {
+        if (value.length < 2 || value.first() != '(' || value.last() != ')') return value
+        var depth = 0
+        value.forEachIndexed { index, char ->
+            if (char == '(') depth++
+            if (char == ')') depth--
+            if (depth == 0 && index < value.lastIndex) return value
+            if (depth < 0) return value
+        }
+        return if (depth == 0) value.substring(1, value.lastIndex).trim() else value
     }
 
     private fun phone(value: String): String {

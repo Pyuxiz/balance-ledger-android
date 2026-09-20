@@ -44,6 +44,35 @@ class WalletEngineTest {
         assertEquals(111571L, next.accounts[0].balance.balanceCents)
         assertEquals(1, next.ledger.size)
     }
+    @Test fun reprocessingUpgradesTruncatedMerchantWithoutDoubleCounting() {
+        val nestedText = "[1条]尾号7874卡9月21日06:53支出(消费美团支付-广东石磨肠粉（双阳支路店）)19.50元，余额1,087.80元。【工商银行】"
+        val received = LocalDateTime.of(2026, 9, 21, 6, 54)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val parsed = BankMessageParser.parseSms(nestedText, received)!!
+        val truncated = parsed.copy(transaction = parsed.transaction.copy(description = "双阳支路店"))
+        val old = WalletState(accounts = listOf(CardAccount(id = "one", balance =
+            BalanceEngine.manualCalibrate(BalanceState(), "7874", 110730, "com.icbc", received - 180000)!!)))
+        val first = WalletEngine.apply(old, "one", truncated)
+        val corrected = WalletEngine.apply(first, "one", parsed)
+        assertEquals(108780L, corrected.accounts.single().balance.balanceCents)
+        assertEquals(1, corrected.ledger.size)
+        assertEquals("消费美团支付-广东石磨肠粉(双阳支路店)", corrected.ledger.single().description)
+        assertEquals(1, corrected.accounts.single().balance.recentTransactions.size)
+        assertEquals(corrected.ledger.single().transactionKey,
+            corrected.accounts.single().balance.recentTransactions.single().transactionKey)
+    }
+    @Test fun balancedSmsCanUpgradeAnEarlierTransactionOnlySmsNotification() {
+        val transactionOnly = BankMessageParser.parseSms(
+            text.replace("，余额1,115.71元", ""), now
+        )!!.copy(delivery = Delivery.SMS_NOTIFICATION)
+        val first = WalletEngine.apply(initial(), "one", transactionOnly)
+        assertNull(first.ledger.single().balanceCents)
+        val corrected = WalletEngine.apply(first, "one", BankMessageParser.parseSms(text, now)!!)
+        assertEquals(111571L, corrected.accounts[0].balance.balanceCents)
+        assertEquals(BalanceConfidence.BANK_CONFIRMED, corrected.accounts[0].balance.confidence)
+        assertEquals(111571L, corrected.ledger.single().balanceCents)
+        assertEquals(1, corrected.ledger.size)
+    }
     @Test fun manualCheckpointRemainsAuthoritativeButOldMessageEntersLedger() {
         val old = initial().copy(accounts = listOf(CardAccount(id = "one", balance =
             BalanceEngine.manualCalibrate(BalanceState(), "7874", 500000, "com.icbc", now)!!)))

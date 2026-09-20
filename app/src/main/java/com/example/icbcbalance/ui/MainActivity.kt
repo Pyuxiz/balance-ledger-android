@@ -297,7 +297,7 @@ private fun SettingsHome(wallet: WalletState, onOpen: (String) -> Unit) {
         Text("数据留在你的设备上", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text("无需银行登录，不联网，不读取短信历史。账单来自通知或新到短信，可能遗漏、延迟；请以银行记录为准。内置 8 家银行来源模板，并对常见动账文案作保守识别。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("余额手账 2.2.0", Modifier.padding(vertical = 20.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("余额手账 2.2.1", Modifier.padding(vertical = 20.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
