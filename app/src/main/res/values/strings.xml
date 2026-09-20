@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">余额手账</string>
+    <string name="widget_description">本地银行卡余额与最近交易</string>
+    <string name="widget_description_2x1">余额手账 · 2×1</string>
+    <string name="widget_description_2x2">余额手账 · 2×2</string>
+    <string name="widget_description_4x1">余额手账 · 4×1</string>
+    <string name="widget_description_4x2">余额手账 · 4×2</string>
+</resources>

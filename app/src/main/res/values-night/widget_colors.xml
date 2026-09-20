@@ -1,0 +1,12 @@
+<resources>
+    <color name="widget_surface">#262326</color>
+    <color name="widget_outline">#3D363C</color>
+    <color name="widget_text">#F7F0F3</color>
+    <color name="widget_secondary">#C1B7BE</color>
+    <color name="widget_muted">#A99DA5</color>
+    <color name="widget_divider">#443D42</color>
+    <color name="widget_brand">#E6A6B4</color>
+    <color name="widget_brand_soft">#493139</color>
+    <color name="widget_confirmed">#9DC3AE</color>
+    <color name="widget_estimated">#D9B88C</color>
+</resources>
